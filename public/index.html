@@ -1,0 +1,113 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>WebRTC Video Chat</title>
+    <script src="../node_modules/socket.io-client/lib/socket.js"></script>
+    <script>
+      let clientSocket = null
+
+      window.onload = () => {
+        let otherPeers = []
+        let pc = new RTCPeerConnection({
+          iceServers: [
+            {url: 'stun:stun1.l.google.com:19302'},
+            {url: 'stun:stun2.l.google.com:19302'}
+          ]
+        })
+        let offerSent = false
+        let stream = null
+
+        function setupClient() {
+          clientSocket = io.connect('http://localhost:8111')
+
+          clientSocket.on('client_socket', data => {
+            if (data === '0') {
+              pc.createOffer(gotOfferDescription)
+              offerSent = true
+            }
+            
+            else if (data.type === 'description') {
+              if (!offerSent) {
+                pc.setRemoteDescription(new RTCSessionDescription(data.info))
+                pc.createAnswer(gotAnswerDescription)
+              }
+              else {
+                pc.setRemoteDescription(new RTCSessionDescription(data.info))
+              }
+            }
+            
+            else if (data.type === 'candidate') {
+              pc.addIceCandidate(new RTCIceCandidate(data.info))
+            }
+            
+            else if (data === 'reset') {
+              pc.close()
+              alert('User candidate exit')
+            }
+          })
+          
+          function gotOfferDescription(desc) {
+            pc.setLocalDescription(desc)
+            clientSocket.emit('server_socket', {type: 'description', info: desc})
+          }
+          function gotAnswerDescription(desc) {
+            pc.setLocalDescription(desc)
+            clientSocket.emit('server_socket', {type: 'description', info: desc})
+          }
+          
+          pc.onicecandidate = event => {
+            if (event.candidate) {
+              clientSocket.emit('server_socket', {type: 'candidate', info: event.candidate})
+            }
+          }
+          pc.onaddstream = e => {
+            document.getElementById('videoStreamOutput').src = webkitURL.createObjectURL(e.stream)
+          }
+          pc.onerror = () => {
+            // Error
+          }
+        }
+        
+        
+        
+        (() => {
+          navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia ||
+            navigator.mozGetUserMedia || navigator.msGetUserMedia
+          window.URL = window.URL || window.webkitURL
+
+          navigator.getUserMedia({video: true, audio: true}, localMediaStream => {
+            document.getElementById('myStream').srcObject = localMediaStream
+            document.getElementById('myStream').style.display = 'block'
+            
+            pc.addStream(localMediaStream)
+            setupClient()
+          }, () => {console.warn('Error getting audio stream from getUserMedia')})
+        })()
+      }
+    </script>
+</head>
+<body>
+<h1>WebRTC Video Chat</h1>
+
+<video
+    src=""
+    autoplay
+    id="videoStreamOutput"
+    style="display: none"
+    width="500"
+></video>
+
+<video
+    src=""
+    autoplay
+    id="myStream"
+    style="display: none"
+    width="450"
+></video>
+
+
+</body>
+</html>
